@@ -1,0 +1,147 @@
+--// Services
+local Players = game:GetService("Players")
+local TeleportService = game:GetService("TeleportService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+--// Player & Target
+local player = Players.LocalPlayer
+local targetPlaceId = 18331795211
+
+--// Helper: Get Remote
+local function getRemote()
+	local container = ReplicatedStorage:FindFirstChild("EternalLand")
+	return container and container:FindFirstChild("Hyacine_RELIABLE")
+end
+
+--// Helper: Start Floating
+local function createFloatBody(hrp: BasePart, height: number)
+	local float = Instance.new("BodyPosition")
+	float.Name = "FloatPosition"
+	float.MaxForce = Vector3.new(0, math.huge, 0)
+	float.D = 1000
+	float.P = 10000
+	float.Position = hrp.Position + Vector3.new(0, height, 0)
+	float.Parent = hrp
+	return float
+end
+
+--// Module: Teleport to Target Place if Not Already There
+if game.PlaceId ~= targetPlaceId then
+	TeleportService:Teleport(targetPlaceId, player)
+	return
+end
+
+--// Main Execution
+local character = player.Character or player.CharacterAdded:Wait()
+local hrp = character:WaitForChild("HumanoidRootPart")
+local floatVelocity = nil
+local canTeleport = false
+local lastTeleportTime = tick()
+
+--// Arguments
+local args = {
+	buffer.fromstring("\r\001\001\006\000Public"),
+	{
+		Workspace:WaitForChild("Entities"):WaitForChild("KingSlime")
+	}
+}
+local extraArgs = { buffer.fromstring("\20") }
+
+--// Floating Control
+local function startFloating(height)
+	if not floatVelocity then
+		floatVelocity = createFloatBody(hrp, height)
+	else
+		floatVelocity.Position = hrp.Position + Vector3.new(0, height, 0)
+	end
+end
+
+local function stopFloating()
+	if floatVelocity then
+		floatVelocity:Destroy()
+		floatVelocity = nil
+	end
+end
+
+--// Teleport to Closest Orb Part
+local function teleportToClosestOrb()
+	local orbNames = {
+		EchoOrb = true, ReverberationOrb = true, ChainOrb = true,
+		FlowOrb = true, BurstOrb = true, ArrowOrb = true
+	}
+
+	local closestPart, shortestDist = nil, math.huge
+	for _, obj in ipairs(Workspace:GetDescendants()) do
+		if obj:IsA("BasePart") and obj.Name == "Part" and orbNames[obj.Parent.Name] then
+			local dist = (hrp.Position - obj.Position).Magnitude
+			if dist < shortestDist then
+				closestPart, shortestDist = obj, dist
+			end
+		end
+	end
+
+	if closestPart then
+		stopFloating()
+		hrp.CFrame = CFrame.new(closestPart.Position + Vector3.new(0, 15, 0))
+		lastTeleportTime = tick()
+		task.spawn(function()
+			task.wait(0.4)
+			startFloating(20)
+		end)
+	end
+end
+
+--// Fire Extra Remote on Start
+local remote = getRemote()
+if remote and remote.Parent then
+	remote:FireServer(unpack(extraArgs))
+end
+
+--// Remote Firing Loop
+task.spawn(function()
+	local first = true
+	while true do
+		if not remote or not remote.Parent then
+			remote = getRemote()
+		else
+			remote:FireServer(unpack(args))
+			if first then
+				first = false
+
+				task.spawn(function()
+					task.wait(1)
+					startFloating(15)
+				end)
+
+				task.spawn(function()
+					task.wait(13)
+					canTeleport = true
+				end)
+
+				task.spawn(function()
+					task.wait(15)
+					while true do
+						if tick() - lastTeleportTime >= 4 then
+							TeleportService:Teleport(targetPlaceId, player)
+							break
+						end
+						task.wait(0.1)
+					end
+				end)
+			end
+		end
+		task.wait(0.5)
+	end
+end)
+
+--// Teleporting Loop
+task.spawn(function()
+	while true do
+		if canTeleport then
+			teleportToClosestOrb()
+			task.wait(0.7)
+		end
+		task.wait(0.15)
+	end
+end)
